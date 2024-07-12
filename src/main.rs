@@ -1,7 +1,5 @@
 use std::{
-    collections::HashMap,
-    io::{Read, Write},
-    net::{TcpListener, TcpStream},
+    collections::HashMap, fs, env, io::{Read, Write}, net::{TcpListener, TcpStream}
 };
 
 fn extract_headers(buffer: [u8; 512]) -> HashMap<String, String> {
@@ -29,7 +27,7 @@ fn extract_headers(buffer: [u8; 512]) -> HashMap<String, String> {
     headers
 }
 
-async fn handle_connection(mut _stream: TcpStream) {
+async fn handle_connection(mut _stream: TcpStream, directory_path: &String) {
     let mut buffer = [0; 512];
     _stream.read(&mut buffer).unwrap();
 
@@ -46,6 +44,21 @@ async fn handle_connection(mut _stream: TcpStream) {
                 "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
                 length, param
             );
+        } else if type_value == "GET" && route_value.starts_with("/files/") {
+            let splitted: Vec<&str> = route_value.split("/").collect();
+            let filename = splitted[2];
+            match fs::read_to_string(directory_path.to_string() + filename) {
+                Ok(content) => {
+                    let length = content.len();
+                    response = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\n\r\n{}",
+                        length, content 
+                    );
+                },
+                Err(_) => {
+                    response = "HTTP/1.1 404 Not Found\r\n\r\n".to_string();
+                }
+            }
         } else if type_value == "GET" && route_value.starts_with("/user-agent") {
             if let Some(user_agent) = headers.get("User-Agent") {
                 response = format!(
@@ -67,13 +80,28 @@ async fn handle_connection(mut _stream: TcpStream) {
 async fn main() {
     println!("Logs from your program will appear here!");
 
+    let args: Vec<String> = env::args().collect();
+    let mut directory_path = "".to_string();
+
+    for i in 1..args.len() {
+        if args[i] == "--directory" {
+            if i + 1 < args.len() {
+                directory_path = args[i + 1].clone();
+                break;
+            }
+        }
+    }
+
+    println!("Path: {}", directory_path);
     let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
 
     for stream in listener.incoming() {
         match stream {
             Ok(mut _stream) => {
                 println!("accepted new connection");
-                tokio::spawn(async move { handle_connection(_stream).await });
+
+                let dir_path = directory_path.clone();
+                tokio::spawn(async move { handle_connection(_stream, &dir_path).await });
             }
             Err(e) => {
                 println!("error: {}", e);
