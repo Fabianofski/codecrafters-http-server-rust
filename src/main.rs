@@ -1,4 +1,17 @@
-use std::{io::Write, io::Read, net::TcpListener};
+use std::{io::Write, io::Read, collections::HashMap, net::TcpListener};
+
+fn extract_headers(buffer: [u8; 512]) -> HashMap<String, String> {
+    let request_str = String::from_utf8_lossy(&buffer[..]);
+    let splitted = request_str.split("\r\n");
+    println!("{:?}", splitted);
+
+    let mut headers = HashMap::new();
+    headers.insert(
+        "status-line".to_string(),
+        "HTTP".to_string()
+    );
+    headers
+} 
 
 fn main() {
     println!("Logs from your program will appear here!");
@@ -14,6 +27,7 @@ fn main() {
 
                 println!("Request: {}", String::from_utf8_lossy(&buffer[..]));
 
+                let headers = extract_headers(buffer);
                 let response = if buffer.starts_with(b"GET / HTTP/1.1\r\n") { 
                     "HTTP/1.1 200 OK\r\n\r\n"
                 } else {
