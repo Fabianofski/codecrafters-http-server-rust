@@ -47,6 +47,10 @@ fn main() {
                         let param = splitted[2];
                         let length = param.len();
                         response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}", length, param);
+                    } else if type_value == "GET" && route_value.starts_with("/user-agent") {
+                        if let Some(user_agent) = headers.get("User-Agent") {
+                            response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}", user_agent.len(), user_agent);
+                        }
                     } else {
                         response = "HTTP/1.1 404 Not Found\r\n\r\n".to_string();
                     }
