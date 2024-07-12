@@ -1,4 +1,8 @@
-use std::{io::Write, io::Read, collections::HashMap, net::TcpListener};
+use std::{
+    collections::HashMap,
+    io::{Read, Write},
+    net::{TcpListener, TcpStream},
+};
 
 fn extract_headers(buffer: [u8; 512]) -> HashMap<String, String> {
     let mut headers = HashMap::new();
@@ -10,7 +14,7 @@ fn extract_headers(buffer: [u8; 512]) -> HashMap<String, String> {
         headers.insert("Type".to_string(), status_splitted[0].to_string());
         headers.insert("Route".to_string(), status_splitted[1].to_string());
         headers.insert("Version".to_string(), status_splitted[2].to_string());
-    } 
+    }
 
     for split in splitted {
         let header_splitted: Vec<&str> = split.split(": ").collect();
@@ -23,41 +27,53 @@ fn extract_headers(buffer: [u8; 512]) -> HashMap<String, String> {
     }
 
     headers
-} 
+}
 
-fn main() {
+async fn handle_connection(mut _stream: TcpStream) {
+    let mut buffer = [0; 512];
+    _stream.read(&mut buffer).unwrap();
+
+    let headers = extract_headers(buffer);
+    let mut response = String::new();
+    if let (Some(type_value), Some(route_value)) = (headers.get("Type"), headers.get("Route")) {
+        if type_value == "GET" && route_value == "/" {
+            response = "HTTP/1.1 200 OK\r\n\r\n".to_string();
+        } else if type_value == "GET" && route_value.starts_with("/echo/") {
+            let splitted: Vec<&str> = route_value.split("/").collect();
+            let param = splitted[2];
+            let length = param.len();
+            response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
+                length, param
+            );
+        } else if type_value == "GET" && route_value.starts_with("/user-agent") {
+            if let Some(user_agent) = headers.get("User-Agent") {
+                response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
+                    user_agent.len(),
+                    user_agent
+                );
+            }
+        } else {
+            response = "HTTP/1.1 404 Not Found\r\n\r\n".to_string();
+        }
+    }
+
+    println!("{}", response);
+    _stream.write_all(response.as_bytes()).unwrap();
+}
+
+#[tokio::main]
+async fn main() {
     println!("Logs from your program will appear here!");
 
     let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
-    
+
     for stream in listener.incoming() {
         match stream {
             Ok(mut _stream) => {
                 println!("accepted new connection");
-                let mut buffer = [0; 512];
-                _stream.read(&mut buffer).unwrap();
-
-                let headers = extract_headers(buffer);
-                let mut response = String::new();
-                if let (Some(type_value), Some(route_value)) = (headers.get("Type"), headers.get("Route")) {
-                    if type_value == "GET" && route_value == "/" {
-                        response = "HTTP/1.1 200 OK\r\n\r\n".to_string();
-                    } else if type_value == "GET" && route_value.starts_with("/echo/") {
-                        let splitted: Vec<&str> = route_value.split("/").collect();
-                        let param = splitted[2];
-                        let length = param.len();
-                        response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}", length, param);
-                    } else if type_value == "GET" && route_value.starts_with("/user-agent") {
-                        if let Some(user_agent) = headers.get("User-Agent") {
-                            response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}", user_agent.len(), user_agent);
-                        }
-                    } else {
-                        response = "HTTP/1.1 404 Not Found\r\n\r\n".to_string();
-                    }
-                }
-
-                println!("{}", response);
-                _stream.write_all(response.as_bytes()).unwrap(); 
+                tokio::spawn(async move { handle_connection(_stream).await });
             }
             Err(e) => {
                 println!("error: {}", e);
