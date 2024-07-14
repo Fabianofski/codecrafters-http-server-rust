@@ -4,7 +4,14 @@ use std::{
 
 fn extract_headers(buffer: [u8; 512]) -> HashMap<String, String> {
     let mut headers = HashMap::new();
-    let request_str = String::from_utf8_lossy(&buffer[..]);
+    let request_str_with_null = String::from_utf8_lossy(&buffer[..]);
+    let request_str = request_str_with_null.trim_end_matches('\0');
+
+    let splitted_body: Vec<&str> = request_str.split("\r\n\r\n").collect(); 
+    if splitted_body.len() >= 2 {
+        headers.insert("Body".to_string(), splitted_body[1].to_string());
+    }
+
     let mut splitted = request_str.split("\r\n");
 
     if let Some(status) = splitted.next() {
@@ -23,6 +30,10 @@ fn extract_headers(buffer: [u8; 512]) -> HashMap<String, String> {
             );
         }
     }
+
+    println!("Incoming Request: ");
+    println!("{}", request_str);
+    println!("{:?}", headers);
 
     headers
 }
@@ -67,11 +78,20 @@ async fn handle_connection(mut _stream: TcpStream, directory_path: &String) {
                     user_agent
                 );
             }
+        } else if type_value == "POST" && route_value.starts_with("/files/") {
+            let splitted: Vec<&str> = route_value.split("/").collect();
+            let param = splitted[2];
+            
+            if let Some(body) = headers.get("Body") {
+                fs::write(directory_path.to_string() + param, body).unwrap(); 
+                response = "HTTP/1.1 201 Created\r\n\r\n".to_string();
+            }
         } else {
             response = "HTTP/1.1 404 Not Found\r\n\r\n".to_string();
         }
     }
 
+    println!("\n\nResponse: ");
     println!("{}", response);
     _stream.write_all(response.as_bytes()).unwrap();
 }
